@@ -24,9 +24,9 @@ const Register: React.FC = () => {
 
     // Role logic
     let role = UserRole.USER;
-    if (adminKey && adminKey === 'SECRET_ADMIN_KEY_123') { // This is our ADMIN_SETUP_KEY
+    if (adminKey && adminKey === 'seuzara2016') { // This is our ADMIN_SETUP_KEY
       role = UserRole.ADMIN;
-    } else if (adminKey && adminKey !== 'SECRET_ADMIN_KEY_123') {
+    } else if (adminKey && adminKey !== 'seuzara2016') {
       setError('Chave de Administrador inválida.');
       return;
     }
