@@ -1,0 +1,8 @@
+
+{
+  "name": "ZB Barbearia",
+  "description": "Sistema de agendamento online para a ZB Barbearia. Cortes de alta qualidade, barba e estilo.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

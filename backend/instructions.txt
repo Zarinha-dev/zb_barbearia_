@@ -1,0 +1,13 @@
+
+# Instruções para o Backend (Produção)
+
+Este projeto frontend simula o backend via LocalStorage para demonstração imediata. 
+Para rodar um backend real em Node.js com SQLite conforme solicitado no desafio:
+
+1. Crie uma pasta `server`
+2. Copie o arquivo `server.js` abaixo para dentro dela.
+3. Instale as dependências: `npm install express better-sqlite3 bcryptjs jsonwebtoken cors dotenv`
+4. Crie um arquivo `.env` com `JWT_SECRET=sua_chave` e `ADMIN_SETUP_KEY=SECRET_ADMIN_KEY_123`
+5. Altere o arquivo `services/api.ts` (ou a lógica do app) para apontar para `http://localhost:3000`
+
+O código do servidor Express completo segue no arquivo `backend/server.js` deste projeto.
