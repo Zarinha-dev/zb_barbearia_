@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(process.cwd(), "."),
+        export default defineConfig({
+           base: '/zb-barbearia/', 
+       })
       },
     },
   };
