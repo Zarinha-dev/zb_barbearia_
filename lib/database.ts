@@ -75,13 +75,14 @@ export function seedIfNeeded() {
 
   // admin seed
   const users: User[] = [];
-  users.push({
-    name: "Administrador",
-    email: "admin@zb.com",
-    password: "admin123",
-    role: "admin",
-    createdAt: new Date().toISOString(),
-  });
+ users.push({
+  name: "Administrador",
+  email: "zara@zb.com",
+  password: "zara2016",
+  role: "admin",
+  createdAt: new Date().toISOString(),
+});
+
   writeJSON(KEYS.users, users);
 
   writeJSON(KEYS.bookings, [] as Booking[]);
