@@ -1,265 +1,241 @@
+// pages/AdminDashboard.tsx
+import React, { useMemo, useState } from "react";
+import {
+  Block,
+  Booking,
+  formatMoneyBRL,
+  getBlocks,
+  getBookings,
+  getCurrentUser,
+  makeId,
+  saveBlocks,
+  saveBookings,
+} from "@/lib/storage";
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/database';
-import { Booking, BookingStatus, Block, Service } from '../types';
-import { formatDateTime, formatCurrency } from '../utils';
+function isoFromDateTime(date: string, time: string) {
+  return new Date(`${date}T${time}:00`).toISOString();
+}
 
-const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'bookings' | 'blocks' | 'revenue'>('bookings');
-  const [bookings, setBookings] = useState<Booking[]>(db.getBookings());
-  const [blocks, setBlocks] = useState<Block[]>(db.getBlocks());
-  
-  // States for block creation
-  const [blockStart, setBlockStart] = useState('');
-  const [blockEnd, setBlockEnd] = useState('');
-  const [blockReason, setBlockReason] = useState('');
+export default function AdminDashboard() {
+  const user = getCurrentUser();
+  const [tab, setTab] = useState<"bookings" | "blocks" | "revenue">("bookings");
+  const [msg, setMsg] = useState("");
 
-  // Filters
-  const [filterDate, setFilterDate] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const bookings = useMemo(() => {
+    return getBookings().sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  }, []);
 
-  const filteredBookings = useMemo(() => {
-    return bookings.filter(b => {
-      const matchesDate = filterDate ? b.startsAt.startsWith(filterDate) : true;
-      const matchesStatus = filterStatus === 'all' ? true : b.status === filterStatus;
-      return matchesDate && matchesStatus;
-    }).sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime());
-  }, [bookings, filterDate, filterStatus]);
+  const blocks = useMemo(() => {
+    return getBlocks().sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+  }, []);
 
-  const revenueStats = useMemo(() => {
-    const validBookings = bookings.filter(b => b.status === BookingStatus.ACTIVE || b.status === BookingStatus.COMPLETED);
-    const now = new Date();
-    
-    const todayStr = now.toISOString().split('T')[0];
-    const daily = validBookings
-      .filter(b => b.startsAt.startsWith(todayStr))
+  const revenueCents = useMemo(() => {
+    return getBookings()
+      .filter(b => b.status === "active")
       .reduce((sum, b) => sum + b.priceCents, 0);
+  }, []);
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(now.getDate() - 7);
-    const weekly = validBookings
-      .filter(b => new Date(b.startsAt) >= sevenDaysAgo)
-      .reduce((sum, b) => sum + b.priceCents, 0);
+  function cancelBooking(id: string) {
+    setMsg("");
+    const list = getBookings();
+    const b = list.find(x => x.id === id);
+    if (!b) return;
+    b.status = "canceled";
+    b.canceledAt = new Date().toISOString();
+    saveBookings(list);
+    setMsg("✅ Agendamento cancelado (admin).");
+  }
 
-    const monthStr = now.toISOString().substring(0, 7);
-    const monthly = validBookings
-      .filter(b => b.startsAt.startsWith(monthStr))
-      .reduce((sum, b) => sum + b.priceCents, 0);
+  const [blockDate, setBlockDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("19:00");
+  const [reason, setReason] = useState("");
 
-    const total = validBookings.reduce((sum, b) => sum + b.priceCents, 0);
+  function addBlock() {
+    setMsg("");
+    const startAt = isoFromDateTime(blockDate, startTime);
+    const endAt = isoFromDateTime(blockDate, endTime);
 
-    return { daily, weekly, monthly, total };
-  }, [bookings]);
-
-  const handleCancelBooking = (id: string) => {
-    if (!window.confirm('Confirmar cancelamento administrativo?')) return;
-    const all = db.getBookings();
-    const updated = all.map(b => b.id === id ? { ...b, status: BookingStatus.CANCELED, canceledAt: new Date().toISOString() } : b);
-    db.setBookings(updated);
-    setBookings(updated);
-  };
-
-  const handleCreateBlock = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!blockStart || !blockEnd || !blockReason) return;
+    if (new Date(endAt).getTime() < new Date(startAt).getTime()) {
+      setMsg("Fim não pode ser antes do início.");
+      return;
+    }
 
     const newBlock: Block = {
-      id: Math.random().toString(36).substr(2, 9),
-      startAt: new Date(blockStart).toISOString(),
-      endAt: new Date(blockEnd).toISOString(),
-      reason: blockReason,
-      createdAt: new Date().toISOString()
+      id: makeId("bl"),
+      startAt,
+      endAt,
+      reason: reason.trim() || undefined,
+      createdAt: new Date().toISOString(),
     };
 
-    const updated = [...blocks, newBlock];
-    db.setBlocks(updated);
-    setBlocks(updated);
-    setBlockStart('');
-    setBlockEnd('');
-    setBlockReason('');
-  };
+    const list = getBlocks();
+    list.push(newBlock);
+    saveBlocks(list);
+    setMsg("✅ Bloqueio criado.");
+  }
 
-  const handleRemoveBlock = (id: string) => {
-    const updated = blocks.filter(b => b.id !== id);
-    db.setBlocks(updated);
-    setBlocks(updated);
-  };
+  function removeBlock(id: string) {
+    setMsg("");
+    const list = getBlocks().filter(b => b.id !== id);
+    saveBlocks(list);
+    setMsg("✅ Bloqueio removido.");
+  }
 
-  const getClientDisplay = (b: Booking) => {
-    if (b.userId) {
-      const user = db.getUsers().find(u => u.id === b.userId);
-      return user?.name || 'Usuário Removido';
-    }
+  if (!user || user.role !== "admin") {
     return (
-      <span className="flex flex-col">
-        <span className="font-bold text-amber-500 italic">Visitante: {b.guestName}</span>
-        <span className="text-xs text-zinc-500">{b.guestPhone}</span>
-      </span>
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-2xl font-semibold mb-2">Admin</h1>
+        <p className="text-zinc-300">Acesso negado. Faça login como admin.</p>
+        <p className="text-zinc-300 mt-2">
+          Admin padrão: <b>admin@zb.com</b> / <b>admin123</b>
+        </p>
+      </div>
     );
-  };
+  }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
-        <h1 className="text-4xl font-bold">Painel Administrativo</h1>
-        <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-          {(['bookings', 'blocks', 'revenue'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                activeTab === tab ? 'bg-amber-600 text-white' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {tab === 'bookings' ? 'Agendamentos' : tab === 'blocks' ? 'Bloqueios' : 'Receita'}
-            </button>
-          ))}
-        </div>
+    <div className="mx-auto max-w-5xl px-4 py-10">
+      <h1 className="text-2xl font-semibold mb-4">Painel Admin</h1>
+
+      <div className="flex gap-2 mb-4">
+        <button
+          className={`px-3 py-2 rounded-lg border border-zinc-800 ${tab === "bookings" ? "bg-zinc-900" : ""}`}
+          onClick={() => setTab("bookings")}
+        >
+          Agendamentos
+        </button>
+        <button
+          className={`px-3 py-2 rounded-lg border border-zinc-800 ${tab === "blocks" ? "bg-zinc-900" : ""}`}
+          onClick={() => setTab("blocks")}
+        >
+          Bloqueios
+        </button>
+        <button
+          className={`px-3 py-2 rounded-lg border border-zinc-800 ${tab === "revenue" ? "bg-zinc-900" : ""}`}
+          onClick={() => setTab("revenue")}
+        >
+          Receita
+        </button>
       </div>
 
-      {activeTab === 'bookings' && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap gap-4 bg-zinc-900 p-4 rounded-xl border border-zinc-800">
-             <div className="flex-1 min-w-[200px]">
-               <label className="block text-xs text-zinc-500 uppercase font-bold mb-1">Filtrar por Data</label>
-               <input 
-                type="date" 
-                value={filterDate}
-                onChange={e => setFilterDate(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm text-white"
-               />
-             </div>
-             <div className="flex-1 min-w-[200px]">
-               <label className="block text-xs text-zinc-500 uppercase font-bold mb-1">Status</label>
-               <select 
-                 value={filterStatus}
-                 onChange={e => setFilterStatus(e.target.value)}
-                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm text-white"
-               >
-                 <option value="all">Todos</option>
-                 <option value={BookingStatus.ACTIVE}>Ativos</option>
-                 <option value={BookingStatus.COMPLETED}>Concluídos</option>
-                 <option value={BookingStatus.CANCELED}>Cancelados</option>
-               </select>
-             </div>
-          </div>
+      {msg && <div className="mb-3 text-sm text-zinc-200">{msg}</div>}
 
-          <div className="overflow-x-auto rounded-2xl border border-zinc-800">
-            <table className="w-full text-left bg-zinc-900 border-collapse">
-              <thead>
-                <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
-                  <th className="p-4">Cliente / Serviço</th>
-                  <th className="p-4">Data/Hora</th>
-                  <th className="p-4">Valor</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBookings.map(b => (
-                  <tr key={b.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                    <td className="p-4">
-                      <div className="text-zinc-200">{getClientDisplay(b)}</div>
-                      <div className="text-sm text-zinc-500">{b.serviceName}</div>
-                    </td>
-                    <td className="p-4 text-zinc-400 font-mono text-sm">{formatDateTime(b.startsAt)}</td>
-                    <td className="p-4 text-zinc-300">{formatCurrency(b.priceCents)}</td>
-                    <td className="p-4">
-                      <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${
-                        b.status === BookingStatus.ACTIVE ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
-                        b.status === BookingStatus.COMPLETED ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
-                        'bg-zinc-800 text-zinc-500 border border-zinc-700'
-                      }`}>
-                        {b.status}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      {b.status === BookingStatus.ACTIVE && (
-                        <button onClick={() => handleCancelBooking(b.id)} className="text-red-500 text-xs font-bold hover:bg-red-500/10 px-2 py-1 rounded transition-colors">
-                          Cancelar
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {tab === "bookings" && (
+        <div className="space-y-3">
+          {bookings.length === 0 && <div className="text-zinc-300">Sem agendamentos.</div>}
 
-      {activeTab === 'blocks' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-          <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 h-fit sticky top-24">
-            <h3 className="text-xl font-bold mb-6 text-white">Bloquear Horário</h3>
-            <form onSubmit={handleCreateBlock} className="space-y-4">
+          {bookings.map((b: Booking) => (
+            <div key={b.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 flex items-center justify-between">
               <div>
-                <label className="block text-xs text-zinc-500 font-bold mb-1">Início</label>
-                <input type="datetime-local" value={blockStart} onChange={e => setBlockStart(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-white" required />
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-500 font-bold mb-1">Fim</label>
-                <input type="datetime-local" value={blockEnd} onChange={e => setBlockEnd(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-white" required />
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-500 font-bold mb-1">Motivo</label>
-                <input type="text" placeholder="Manutenção, feriado, etc" value={blockReason} onChange={e => setBlockReason(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-white" required />
-              </div>
-              <button type="submit" className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl transition-all">
-                Adicionar Bloqueio
-              </button>
-            </form>
-          </div>
-
-          <div className="lg:col-span-2 space-y-4">
-            <h3 className="text-xl font-bold mb-6 text-white">Bloqueios Ativos</h3>
-            {blocks.length > 0 ? blocks.map(block => (
-              <div key={block.id} className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-zinc-200">{block.reason}</p>
-                  <p className="text-sm text-zinc-500">
-                    {formatDateTime(block.startAt)} — {formatDateTime(block.endAt)}
-                  </p>
+                <div className="font-semibold">{b.serviceName}</div>
+                <div className="text-zinc-300 text-sm">
+                  {new Date(b.startsAt).toLocaleString("pt-BR")} • {formatMoneyBRL(b.priceCents)}
                 </div>
-                <button onClick={() => handleRemoveBlock(block.id)} className="text-zinc-500 hover:text-red-500">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
+                <div className="text-zinc-400 text-sm">
+                  Cliente: {b.userName} ({b.userEmail})
+                </div>
+                <div className={`text-sm mt-1 ${b.status === "active" ? "text-green-400" : "text-red-400"}`}>
+                  {b.status === "active" ? "Ativo" : "Cancelado"}
+                </div>
               </div>
-            )) : (
-              <p className="text-zinc-600 italic">Nenhum bloqueio cadastrado.</p>
-            )}
+
+              {b.status === "active" && (
+                <button
+                  className="px-3 py-2 rounded-lg border border-zinc-800"
+                  onClick={() => cancelBooking(b.id)}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "blocks" && (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+            <h2 className="font-semibold mb-3">Criar bloqueio</h2>
+
+            <label className="text-sm text-zinc-300">Data</label>
+            <input
+              type="date"
+              className="mt-1 w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800"
+              value={blockDate}
+              onChange={(e) => setBlockDate(e.target.value)}
+            />
+
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div>
+                <label className="text-sm text-zinc-300">Início</label>
+                <input
+                  type="time"
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-zinc-300">Fim</label>
+                <input
+                  type="time"
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <label className="text-sm text-zinc-300 mt-3 block">Motivo (opcional)</label>
+            <input
+              className="mt-1 w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ex: Feriado / Manutenção"
+            />
+
+            <button
+              onClick={addBlock}
+              className="mt-4 w-full px-3 py-2 rounded-lg bg-zinc-100 text-zinc-900 font-semibold"
+            >
+              Bloquear
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+            <h2 className="font-semibold mb-3">Bloqueios atuais</h2>
+
+            <div className="space-y-2">
+              {blocks.length === 0 && <div className="text-zinc-300">Sem bloqueios.</div>}
+
+              {blocks.map(bl => (
+                <div key={bl.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between">
+                  <div className="text-sm">
+                    <div className="text-zinc-200">
+                      {new Date(bl.startAt).toLocaleString("pt-BR")} → {new Date(bl.endAt).toLocaleString("pt-BR")}
+                    </div>
+                    {bl.reason && <div className="text-zinc-400">Motivo: {bl.reason}</div>}
+                  </div>
+                  <button className="px-3 py-2 rounded-lg border border-zinc-800" onClick={() => removeBlock(bl.id)}>
+                    Remover
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {activeTab === 'revenue' && (
-        <div className="space-y-12">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {[
-              { label: 'Hoje', val: revenueStats.daily },
-              { label: '7 Dias', val: revenueStats.weekly },
-              { label: 'Este Mês', val: revenueStats.monthly },
-              { label: 'Total Acumulado', val: revenueStats.total },
-            ].map(stat => (
-              <div key={stat.label} className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 text-center">
-                <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">{stat.label}</p>
-                <p className="text-3xl font-bold text-amber-500">{formatCurrency(stat.val)}</p>
-              </div>
-            ))}
-          </div>
-          
-          <div className="bg-zinc-900/40 p-10 rounded-3xl border border-zinc-800 text-center">
-             <h3 className="text-2xl font-bold mb-4 text-white">Critério de Receita</h3>
-             <p className="text-zinc-400 max-w-2xl mx-auto">
-               A receita bruta é calculada somando os valores de todos os agendamentos com status <strong>"Ativo"</strong> ou <strong>"Concluído"</strong>. Agendamentos cancelados não são contabilizados.
-             </p>
-          </div>
+      {tab === "revenue" && (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <h2 className="font-semibold mb-2">Receita (demo)</h2>
+          <p className="text-zinc-300">
+            Soma de agendamentos <b>ativos</b> (front-only).
+          </p>
+          <div className="text-3xl font-semibold mt-4">{formatMoneyBRL(revenueCents)}</div>
         </div>
       )}
     </div>
   );
-};
-
-export default AdminDashboard;
+}
