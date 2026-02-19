@@ -5,6 +5,7 @@ import { db } from '../lib/database';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
+  const role = email.toLowerCase() === "admin@zb.com" ? "admin" : "user";
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login } = useAuth();
