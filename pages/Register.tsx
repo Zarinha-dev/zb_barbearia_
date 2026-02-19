@@ -22,7 +22,7 @@ export default function Register({ setPage }: { setPage: (p: string) => void }) 
       return setMsg("Esse email já está cadastrado.");
     }
 
-    const role = cleanEmail === "admin@zb.com" ? "admin" : "user";
+    const role = cleanEmail === "zara@zb.com" ? "admin" : "user";
     const user = {
       name: name.trim(),
       email: cleanEmail,
