@@ -23,7 +23,7 @@ export default function Login({ setPage }: { setPage: (p: string) => void }) {
     <div className="mx-auto max-w-md px-4 py-10">
       <h1 className="text-2xl font-semibold mb-2">Login</h1>
       <p className="text-zinc-300 mb-6">
-        Admin padrão: <b>admin@zb.com</b> / <b>admin123</b>
+        Admin padrão: <b>zara@zb.com</b> / <b>zara2016</b>
       </p>
 
       <form onSubmit={onLogin} className="space-y-3">
