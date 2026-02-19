@@ -123,3 +123,20 @@ app.get('/admin/revenue', auth('admin'), (req, res) => {
 });
 
 app.listen(3000, () => console.log('Server running on port 3000'));
+
+// Create default admin if not exists
+const adminEmail = "admin@zb.com";
+const adminExists = db.prepare("SELECT * FROM users WHERE email = ?").get(adminEmail);
+
+if (!adminExists) {
+  const hash = bcrypt.hashSync("admin123", 10);
+
+  db.prepare(`
+    INSERT INTO users (name, email, password_hash, role)
+    VALUES (?, ?, ?, ?)
+  `).run("Administrador", adminEmail, hash, "admin");
+
+  console.log("✅ Admin padrão criado:");
+  console.log("Email: admin@zb.com");
+  console.log("Senha: admin123");
+}
